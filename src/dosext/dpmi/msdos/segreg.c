@@ -52,7 +52,8 @@ static enum MfRet msdos_sel_fault(sigcontext_t *scp)
     /* Because the unmodified Win3.1 kernel (not WinOS2) needs this */
     /* Yes, but only when LDT is read-only, and then it doesn't work anyway.
      * So lets disable it again and see if someone else needs this. */
-#if 0
+    /* netscape navigator crashes without this! re-enable. */
+#if 1
 	char fixed = MFR_NOT_HANDLED;
 	unsigned char * csp;
 
