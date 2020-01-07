@@ -45,6 +45,10 @@ static enum MfRet msdos_sel_fault(sigcontext_t *scp)
     int reg;
     unsigned int segment;
     unsigned short desc;
+    uint8_t *addr;
+    uint16_t *saddr;
+    Bit32u dptr;
+    int len;
 
     D_printf("MSDOS: msdos_fault, err=%#x\n", _err);
     if ((_err & 0xffff) == 0)	/*  not a selector error */
@@ -67,6 +71,8 @@ static enum MfRet msdos_sel_fault(sigcontext_t *scp)
     case 0xf800:
     case 0xff00:
     case 0x38:		// ShellShock installer
+    case 0x10:
+    case 0x18:
 	break;
     default:
 	return MFR_ERROR;
@@ -101,6 +107,26 @@ static enum MfRet msdos_sel_fault(sigcontext_t *scp)
 	/* The 0x38 is the "flat data" segment (0,4G) */
 	desc = ConvertSegmentToDescriptor_lim(0, 0xffffffff);
 	break;
+    case 0x10:
+	len = decode_memaddr(scp, &addr, &saddr);
+	if (len < 4)
+	    return MFR_NOT_HANDLED;
+	memcpy(addr - 6, dpmi_fpu_ctx(), 6);
+	*saddr = dpmi_fpu_cs();
+	dptr = dpmi_fpu_ip();
+	memcpy(addr, &dptr, len - 2);
+	error("len %i addr %p val %x\n", len, addr, *saddr);
+	return MFR_HANDLED;
+    case 0x18:
+	len = decode_memaddr(scp, &addr, &saddr);
+	if (len < 4)
+	    return MFR_NOT_HANDLED;
+	memcpy(addr - 10, dpmi_fpu_ctx(), 6);
+	*saddr = dpmi_fpu_ds();
+	dptr = dpmi_fpu_dp();
+	memcpy(addr, &dptr, len - 2);
+	error("len %i addr %p val %x\n", len, addr, *saddr);
+	return MFR_HANDLED;
     default:
 	/* any other special cases? */
 	desc = ConvertSegmentToDescriptor(segment);

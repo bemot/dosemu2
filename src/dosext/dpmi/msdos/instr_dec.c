@@ -40,6 +40,7 @@ typedef struct x86_ins {
 } x86_ins;
 
 #define R_WORD(a) LO_WORD(a)
+#define R_DWORD(a) ((a)&0xffffffff)
 #define SP (R_WORD(_esp))
 #define sreg_idx(reg) (es_INDEX+((reg)&0x7))
 
@@ -284,6 +285,135 @@ static uint32_t reg(sigcontext_t *scp, int reg)
 	return _edi;
     }
     return -1;
+}
+
+static unsigned char *modrm16(sigcontext_t *scp, unsigned char *cp,
+	unsigned seg_base)
+{
+  unsigned addr = 0;
+  unsigned seg_ss_base = GetSegmentBase(_ss);
+
+  switch(cp[1] & 0xc0) { /* decode modifier */
+  case 0x40:
+    addr = (short)(signed char)cp[2];
+    break;
+  case 0x80:
+    addr = R_WORD(cp[2]);
+    break;
+  case 0xc0:
+    error("unsupported\n");
+    return NULL;
+  }
+
+
+  switch(cp[1] & 0x07) { /* decode address */
+  case 0x00:
+    return MEM_BASE32(((addr + _ebx + _esi) & 0xffff) + seg_base);
+  case 0x01:
+    return MEM_BASE32(((addr + _ebx + _edi) & 0xffff) + seg_base);
+  case 0x02:
+    return MEM_BASE32(((addr + _ebp + _esi) & 0xffff) + seg_ss_base);
+  case 0x03:
+    return MEM_BASE32(((addr + _ebp + _edi) & 0xffff) + seg_ss_base);
+  case 0x04:
+    return MEM_BASE32(((addr + _esi) & 0xffff) + seg_base);
+  case 0x05:
+    return MEM_BASE32(((addr + _edi) & 0xffff) + seg_base);
+  case 0x06:
+    if (cp[1] >= 0x40)
+      return MEM_BASE32(((addr + _ebp) & 0xffff) + seg_ss_base);
+    else {
+      return MEM_BASE32(R_WORD(cp[2]) + seg_base);
+    }
+  case 0x07:
+    return MEM_BASE32(((addr + _ebx) & 0xffff) + seg_base);
+  }
+  return NULL;
+}
+
+static unsigned char *modrm32(sigcontext_t *scp, unsigned char *cp,
+	unsigned seg_base)
+{
+  unsigned addr = 0;
+  unsigned seg_ss_base = GetSegmentBase(_ss);
+
+  switch(cp[1] & 0xc0) { /* decode modifier */
+  case 0x40:
+    addr = (int)(signed char)cp[2];
+    break;
+  case 0x80:
+    addr = R_DWORD(cp[2]);
+    break;
+  case 0xc0:
+    error("unsupported\n");
+    return NULL;
+  }
+  switch(cp[1] & 0x07) { /* decode address */
+  case 0x00:
+  case 0x01:
+  case 0x02:
+  case 0x03:
+  case 0x06:
+  case 0x07:
+    return MEM_BASE32(addr + reg(scp, cp[1]) + seg_base);
+  case 0x04: /* sib byte follows */
+    error("unsupported\n");
+    return NULL;
+//    return sib(cp, x86, inst_len);
+  case 0x05:
+    if (cp[1] >= 0x40)
+      return MEM_BASE32(addr + _ebp + seg_ss_base);
+    else {
+      return MEM_BASE32(R_DWORD(cp[2]) + seg_base);
+    }
+  }
+  return NULL;
+}
+
+int decode_memaddr(sigcontext_t *scp, uint8_t **addr, uint16_t **saddr)
+{
+    int ret = 0;
+    unsigned char *csp;
+    unsigned cs, eip, seg_base;
+    x86_ins x86;
+
+    x86._32bit = dpmi_segment_is32(_cs);
+    cs = GetSegmentBase(_cs);
+    eip = _eip + x86_handle_prefixes(scp, cs, &x86);
+    if (x86.rep) {		// FIXME
+	error("LDT: Unimplemented rep\n");
+	return 0;
+    }
+    if (x86.es)
+	seg_base = GetSegmentBase(_es);
+    else if (x86.fs)
+	seg_base = GetSegmentBase(_fs);
+    else if (x86.gs)
+	seg_base = GetSegmentBase(_gs);
+    else if (x86.cs)
+	seg_base = GetSegmentBase(_cs);
+    else if (x86.ss)
+	seg_base = GetSegmentBase(_ss);
+    else
+	seg_base = GetSegmentBase(_ds);
+    csp = (unsigned char *)MEM_BASE32(cs + eip);
+
+    switch(*csp) {
+    case 0xc4:		/* les */
+    case 0xc5:		/* lds */
+	switch (x86.address_size) {
+	case 2:
+	    *addr = modrm16(scp, csp, seg_base);
+	    break;
+	case 4:
+	    *addr = modrm32(scp, csp, seg_base);
+	    break;
+	}
+	ret = x86.operand_size + 2;
+	*saddr = (uint16_t *)(*addr + x86.operand_size);
+	break;
+    }
+    return ret;
 }
 
 int decode_memop(sigcontext_t *scp, uint32_t *op)

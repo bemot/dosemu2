@@ -4534,6 +4534,47 @@ int dpmi_fault(sigcontext_t *scp)
   return DPMI_RET_FAULT;	// process the rest in dosemu context
 }
 
+void dpmi_fpu_fixup(sigcontext_t *scp)
+{
+#ifdef __x86_64__
+  DPMI_CLIENT.fpu_ip = __fpstate->rip;
+  DPMI_CLIENT.fpu_dp = __fpstate->rdp;
+  DPMI_CLIENT.fpu_cs = _cs;
+  DPMI_CLIENT.fpu_ds = _ds;
+#else
+  DPMI_CLIENT.fpu_ip = __fpstate->ipoff;
+  DPMI_CLIENT.fpu_dp = __fpstate->dataoff;
+  DPMI_CLIENT.fpu_cs = __fpstate->cssel;
+  DPMI_CLIENT.fpu_ds = __fpstate->datasel;
+#endif
+  DPMI_CLIENT.saved_fpu = *__fpstate;
+}
+
+Bit16u dpmi_fpu_cs(void)
+{
+  return DPMI_CLIENT.fpu_cs;
+}
+
+Bit16u dpmi_fpu_ds(void)
+{
+  return DPMI_CLIENT.fpu_ds;
+}
+
+Bit32u dpmi_fpu_ip(void)
+{
+  return DPMI_CLIENT.fpu_ip;
+}
+
+Bit32u dpmi_fpu_dp(void)
+{
+  return DPMI_CLIENT.fpu_dp;
+}
+
+struct _libc_fpstate *dpmi_fpu_ctx(void)
+{
+  return &DPMI_CLIENT.saved_fpu;
+}
+
 void dpmi_realmode_hlt(unsigned int lina)
 {
   sigcontext_t *scp;

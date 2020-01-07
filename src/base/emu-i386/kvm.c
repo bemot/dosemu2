@@ -794,6 +794,7 @@ int kvm_dpmi(sigcontext_t *scp)
         __fpstate->datasel = _ds;
 #endif
         dbug_printf("coprocessor exception, calling IRQ13\n");
+        dpmi_fpu_fixup(scp);
         print_exception_info(scp);
         pic_request(PIC_IRQ13);
         ret = DPMI_RET_DOSEMU;

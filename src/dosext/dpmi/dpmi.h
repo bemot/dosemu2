@@ -118,6 +118,11 @@ struct DPMIclient_struct {
   int RSP_state, RSP_installed;
   int ext__thunk_16_32;	// thunk extension
   int win3x_mode;
+  struct _libc_fpstate saved_fpu;
+  Bit32u fpu_ip;
+  Bit32u fpu_dp;
+  Bit16u fpu_cs;
+  Bit16u fpu_ds;
 };
 
 struct RSPcall_s {
@@ -178,6 +183,12 @@ void fake_pm_int(void);
 int in_dpmi_pm(void);
 int dpmi_active(void);
 int dpmi_segment_is32(int sel);
+void dpmi_fpu_fixup(sigcontext_t *scp);
+Bit16u dpmi_fpu_cs(void);
+Bit16u dpmi_fpu_ds(void);
+Bit32u dpmi_fpu_ip(void);
+Bit32u dpmi_fpu_dp(void);
+struct _libc_fpstate *dpmi_fpu_ctx(void);
 
 #ifdef USE_MHPDBG   /* dosdebug support */
 int dpmi_mhp_regs(void);
